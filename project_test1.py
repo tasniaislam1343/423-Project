@@ -43,6 +43,17 @@ last_time     = 0.0
 spawn_timer   = 0.0
 ground_far_z  = 0.0
 
+# ─────────────────────────── WEATHER MODE / TRANSITIONS ─────────
+# Modes cycle automatically based on distance every 500 metres
+weather_modes = ["day", "night", "rain", "sunset"]
+weather_mode = "day"            # current logical mode name
+weather_target_mode = "day"     # mode we're transitioning to
+weather_transition = 1.0         # 0.0..1.0 transition progress
+current_sky_top = ZONES[0][0]
+current_sky_bot = ZONES[0][1]
+current_weather_rain = False
+
+
 player = {
     "lane": 1, "x": 0.0, "y": 0.0, "vy": 0.0,
     "jumping": False, "jump_count": 0,
@@ -125,11 +136,18 @@ def draw_screen_rect(x, y, w, h, r, g, b, a=1.0):
     glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
     gluOrtho2D(0, WIN_W, 0, WIN_H)
     glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
-    glColor3f(r, g, b)
+    # Use blending so overlays can be translucent instead of fully opaque
+    blend_was = glIsEnabled(GL_BLEND)
+    if not blend_was:
+        glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glColor4f(r, g, b, a)
     glBegin(GL_QUADS)
     glVertex3f(x,   y,   0); glVertex3f(x+w, y,   0)
     glVertex3f(x+w, y+h, 0); glVertex3f(x,   y+h, 0)
     glEnd()
+    if not blend_was:
+        glDisable(GL_BLEND)
     glPopMatrix()
     glMatrixMode(GL_PROJECTION); glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
@@ -137,8 +155,9 @@ def draw_screen_rect(x, y, w, h, r, g, b, a=1.0):
 # ─────────────────────────── SKYBOX ──────────────────────────────
 
 def draw_skybox():
-    top = ZONES[zone_idx][0]
-    bot = ZONES[zone_idx][1]
+    # Use smoothly transitioning sky colours (overrides zone colours)
+    top = current_sky_top if 'current_sky_top' in globals() else ZONES[zone_idx][0]
+    bot = current_sky_bot if 'current_sky_bot' in globals() else ZONES[zone_idx][1]
     glBegin(GL_QUADS)
     # back wall
     glColor3f(*top); glVertex3f(-200, 80,-150)
@@ -161,6 +180,15 @@ def draw_skybox():
     glColor3f(*top); glVertex3f( 200, 80,-150)
     glColor3f(*top); glVertex3f(-200, 80,-150)
     glEnd()
+    # Draw sun for sunset mode (behind the skybox)
+    if weather_target_mode == "sunset" or weather_mode == "sunset":
+        # Place sun far back so it's visible in skybox
+        glPushMatrix()
+        glColor3f(1.0, 0.95, 0.2)
+        # large sun behind the scene
+        glTranslatef(0.0, 35.0, -140.0)
+        glutSolidSphere(18.0, 32, 24)
+        glPopMatrix()
 
 # ─────────────────────────── GROUND TILES ────────────────────────
 
@@ -233,9 +261,10 @@ def draw_background_trees():
 def init_weather():
     global weather
     weather = []
-    rain = ZONES[zone_idx][5]
+    # use the current weather mode's rain flag rather than zone flag
+    rain = current_weather_rain
     snow = ZONES[zone_idx][6]
-    n = 130 if (rain or snow) else 0
+    n = 140 if (rain or snow) else 0
     for _ in range(n):
         weather.append({
             "x":  random.uniform(-5, 5),
@@ -256,21 +285,35 @@ def update_weather(dt):
             w["z"] = random.uniform(-2, -30)
 
 def draw_weather():
-    for w in weather:
-        if w["snow"]:
-            glColor3f(0.95, 0.97, 1.0)
-            glPushMatrix()
-            glTranslatef(w["x"], w["y"], w["z"])
-            glutSolidSphere(0.04, 5, 4)
-            glPopMatrix()
-        else:
-            glColor3f(0.55, 0.72, 0.9)
-            glBegin(GL_QUADS)
-            glVertex3f(w["x"] - 0.015, w["y"],      w["z"])
-            glVertex3f(w["x"] + 0.015, w["y"],      w["z"])
-            glVertex3f(w["x"] + 0.005, w["y"]+0.4,  w["z"])
-            glVertex3f(w["x"] - 0.005, w["y"]+0.4,  w["z"])
-            glEnd()
+    # If current weather mode is rain, draw as falling lines for a denser effect
+    if current_weather_rain:
+        # muted gray rain lines (slightly brighter gray)
+        glColor3f(0.65, 0.65, 0.65)
+        glBegin(GL_LINES)
+        for w in weather:
+            # draw a short slanted line according to velocity for motion effect
+            x0, y0, z0 = w["x"], w["y"], w["z"]
+            x1 = x0 + w["vx"] * 0.3
+            y1 = y0 + w["vy"] * 0.05 - 0.6
+            glVertex3f(x0, y0, z0)
+            glVertex3f(x1, y1, z0)
+        glEnd()
+    else:
+        for w in weather:
+            if w["snow"]:
+                glColor3f(0.95, 0.97, 1.0)
+                glPushMatrix()
+                glTranslatef(w["x"], w["y"], w["z"])
+                glutSolidSphere(0.04, 5, 4)
+                glPopMatrix()
+            else:
+                glColor3f(0.55, 0.72, 0.9)
+                glBegin(GL_QUADS)
+                glVertex3f(w["x"] - 0.015, w["y"],      w["z"])
+                glVertex3f(w["x"] + 0.015, w["y"],      w["z"])
+                glVertex3f(w["x"] + 0.005, w["y"]+0.4,  w["z"])
+                glVertex3f(w["x"] - 0.005, w["y"]+0.4,  w["z"])
+                glEnd()
 
 # ─────────────────────────── PARTICLES ───────────────────────────
 
@@ -318,6 +361,7 @@ OBJ_SIZES = {
     "bird_high": (0.50, 0.30, 0.50),
     "spring":    (0.60, 0.20, 0.60),
     "log":       (0.55, 0.40, 0.55),
+    "big_bunny": (0.90, 0.80, 1.00),
 }
 OBJ_CY_OVERRIDE = {"bird_high": 2.5, "bird_low": 1.3, "spring": 0.2}
 
@@ -337,11 +381,14 @@ def spawn_object():
     elif r < 0.76: kind = "rock"
     elif r < 0.84: kind = "fence"
     elif r < 0.92: kind = "cactus"
-    else:           kind = "log"
+    elif r < 0.96: kind = "log"
+    else:           kind = "big_bunny"
     objects.append({
         "lane": lane, "x": LANES[lane],
         "z": -32.0, "kind": kind,
         "alive": True, "anim": 0.0,
+        # optional state for AI enemies
+        "ai_timer": 0.0,
     })
 
 # ─────────────────────────── DRAW OBJECT ─────────────────────────
@@ -401,6 +448,23 @@ def draw_object(o):
     elif k == "log":
         draw_cylinder(x, 0.0, z-0.45, 0.45, 0.90, (0.55, 0.32, 0.10))
         draw_sphere(x, 0.45, z-0.45, 0.46, (0.65, 0.40, 0.15))
+
+    elif k == "big_bunny":
+        # Larger hostile bunny that can steal carrots or attack the player
+        body_col = (0.85, 0.75, 0.70)
+        eye_col  = (0.12, 0.05, 0.05)
+        # Body
+        draw_box(x, 0.45, z, 0.90, 0.80, 1.00, body_col)
+        # Head
+        draw_sphere(x, 0.95, z-0.35, 0.36, body_col)
+        # Ears
+        draw_box(x-0.20, 1.35, z-0.28, 0.12, 0.60, 0.08, body_col)
+        draw_box(x+0.20, 1.35, z-0.28, 0.12, 0.60, 0.08, body_col)
+        # Eyes (angry)
+        draw_sphere(x-0.12, 0.95, z-0.52, 0.06, eye_col)
+        draw_sphere(x+0.12, 0.95, z-0.52, 0.06, eye_col)
+        # Teeth / snout
+        draw_box(x, 0.78, z-0.58, 0.14, 0.10, 0.08, (1.0,1.0,1.0))
 
 # ─────────────────────────── DRAW BUNNY ──────────────────────────
 
@@ -623,18 +687,36 @@ def collect_object(o):
         spawn_particles(o["x"], 0.4, o["z"], (1.0,0.3,0.8), 12)
 
 def check_collisions():
-    global game_state
+    global game_state, carrots, screen_shake, shake_amp
     for o in objects:
         if not o["alive"]: continue
         if collides_with_player(o):
             if o["kind"] in ("carrot","potion","spring"):
                 collect_object(o); o["alive"] = False
             else:
-                if player["invincible"]:
-                    o["alive"] = False
-                    spawn_particles(o["x"], obj_cy(o), o["z"], (0.0,1.0,1.0), 8)
+                # Special handling for hostile big_bunny
+                if o.get("kind") == "big_bunny":
+                    # Kick or invincible kills the enemy
+                    if player["kick_timer"] > 0 or player["invincible"]:
+                        o["alive"] = False
+                        spawn_particles(o["x"], obj_cy(o), o["z"], (1.0,0.6,0.2), 14)
+                        screen_shake = 0.45; shake_amp = 0.16
+                    else:
+                        if carrots > 0:
+                            # steal some carrots and run off
+                            steal = min(carrots, random.randint(1, 3))
+                            carrots -= steal
+                            spawn_particles(o["x"], obj_cy(o), o["z"], (1.0,0.4,0.0), 14)
+                            o["alive"] = False
+                            screen_shake = 0.25; shake_amp = 0.08
+                        else:
+                            game_state = "dead"
                 else:
-                    game_state = "dead"
+                    if player["invincible"]:
+                        o["alive"] = False
+                        spawn_particles(o["x"], obj_cy(o), o["z"], (0.0,1.0,1.0), 8)
+                    else:
+                        game_state = "dead"
 
 def set_zone(idx):
     global zone_idx
@@ -648,6 +730,7 @@ def set_zone(idx):
 def update_game(dt):
     global distance, game_speed, last_zone
     global invisible_gnd, screen_shake, spawn_timer
+    global weather_target_mode, weather_mode, weather_transition, current_sky_top, current_sky_bot, current_weather_rain
 
     game_speed = BASE_SPEED + distance * SPEED_INC
     distance  += game_speed * dt
@@ -656,6 +739,54 @@ def update_game(dt):
     if km != last_zone:
         last_zone = km
         set_zone(km % len(ZONES))
+
+    # Automatic weather mode switching every 500 metres
+    desired_idx = int(distance / 500) % len(weather_modes)
+    desired_mode = weather_modes[desired_idx]
+    if desired_mode != weather_target_mode:
+        # start transition to new weather
+        weather_target_mode = desired_mode
+        weather_transition = 0.0
+        # set target rain flag and re-init particles gradually
+        # immediate init will occur once transition completes
+
+    # progress transition smoothly
+    if weather_transition < 1.0:
+        weather_transition = clamp(weather_transition + dt * 0.12, 0.0, 1.0)
+        # determine source and target sky colours
+        def sky_for_mode(m):
+            if m == "day":
+                return ((0.53,0.81,0.98),(0.78,0.93,1.00))
+            if m == "night":
+                return ((0.03,0.03,0.12),(0.06,0.06,0.20))
+            # Rain should be only a shade deeper than normal, not fully dark
+            if m == "rain":
+                return ((0.30,0.42,0.56),(0.45,0.55,0.65))
+            if m == "sunset":
+                return ((0.98,0.58,0.22),(0.98,0.45,0.10))
+            return (ZONES[zone_idx][0], ZONES[zone_idx][1])
+
+        src_top, src_bot = sky_for_mode(weather_mode)
+        tgt_top, tgt_bot = sky_for_mode(weather_target_mode)
+        # lerp into current sky
+        t = weather_transition
+        current_sky_top = (lerp(src_top[0], tgt_top[0], t), lerp(src_top[1], tgt_top[1], t), lerp(src_top[2], tgt_top[2], t))
+        current_sky_bot = (lerp(src_bot[0], tgt_bot[0], t), lerp(src_bot[1], tgt_bot[1], t), lerp(src_bot[2], tgt_bot[2], t))
+        # when transition finishes, update the logical mode and rain flag
+        if weather_transition >= 1.0:
+            weather_mode = weather_target_mode
+            current_weather_rain = (weather_mode == 'rain')
+            init_weather()
+    else:
+        # ensure sky matches current mode exactly
+        if weather_mode == 'day':
+            current_sky_top = ZONES[0][0]; current_sky_bot = ZONES[0][1]
+        elif weather_mode == 'night':
+            current_sky_top = (0.03,0.03,0.12); current_sky_bot = (0.06,0.06,0.20)
+        elif weather_mode == 'rain':
+            current_sky_top = (0.25,0.25,0.30); current_sky_bot = (0.15,0.15,0.20)
+        elif weather_mode == 'sunset':
+            current_sky_top = (0.98,0.58,0.22); current_sky_bot = (0.98,0.45,0.10)
 
     # Keep road visible for gameplay clarity
     invisible_gnd = False
@@ -693,6 +824,19 @@ def update_game(dt):
     for o in objects:
         o["z"]    += game_speed * dt
         o["anim"] += dt
+        # Smoothly follow lane x (allows enemies to slide between lanes)
+        o["x"]     = lerp(o.get("x", LANES[o.get("lane",0)]), LANES[o.get("lane",0)], 0.14)
+
+        # Simple AI for big_bunny: occasionally try to change lane toward player
+        if o["kind"] == "big_bunny":
+            o["ai_timer"] -= dt
+            if o["ai_timer"] <= 0:
+                o["ai_timer"] = random.uniform(0.3, 1.0)
+                # move lane one step toward player with some probability
+                if o["lane"] < player["lane"] and random.random() < 0.7:
+                    o["lane"] = clamp(o["lane"] + 1, 0, 2)
+                elif o["lane"] > player["lane"] and random.random() < 0.7:
+                    o["lane"] = clamp(o["lane"] - 1, 0, 2)
 
     check_collisions()
 
@@ -768,7 +912,17 @@ def idle():
 # ─────────────────────────── DISPLAY (same as template) ──────────
 
 def showScreen():
-    fog = ZONES[zone_idx][3]
+    # Choose fog color; darken the scene slightly when rain is active or transitioning to rain
+    orig_fog = ZONES[zone_idx][3]
+    try:
+        rain_active = current_weather_rain or weather_mode == 'rain' or weather_target_mode == 'rain' or (weather_transition < 1.0 and weather_target_mode == 'rain')
+    except NameError:
+        rain_active = False
+    if rain_active:
+        dark = (0.12, 0.12, 0.15)
+        fog = (lerp(orig_fog[0], dark[0], 0.25), lerp(orig_fog[1], dark[1], 0.25), lerp(orig_fog[2], dark[2], 0.25))
+    else:
+        fog = orig_fog
     glClearColor(*fog, 1.0)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
@@ -790,7 +944,8 @@ def showScreen():
     # Dark vignette for later zones (blurry-vision effect)
     if zone_idx >= 2:
         shade = min(0.35, (zone_idx-1)*0.10)
-        draw_screen_rect(0, 0, WIN_W, WIN_H, shade * 0.2, shade * 0.2, shade * 0.25)
+        # Use translucency so the vignette darkens the scene without going fully black
+        draw_screen_rect(0, 0, WIN_W, WIN_H, shade * 0.2, shade * 0.2, shade * 0.25, shade)
 
     draw_hud()
     glutSwapBuffers()
