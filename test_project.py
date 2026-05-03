@@ -25,8 +25,8 @@ fovY         = 65
 # ─────────────────────────── GAME TUNABLES (easy to change) ───
 # Put common gameplay tuning variables here so they are obvious
 # and easy to tweak without hunting through the code.
-FINAL_BOSS_DISTANCE = 1000.0      # metres: when the final boss appears
-FINAL_BOSS_POWER    = 60          # carrots required to beat the final boss
+FINAL_BOSS_DISTANCE = 600.0      # metres: when the final boss appears
+FINAL_BOSS_POWER    = 30          # carrots required to beat the final boss
 
 # Place a spring before some holes so players can clear them (probability)
 HOLE_SPRING_PROB    = 0.45
@@ -41,7 +41,6 @@ POTION_SPEED_DURATION    = 6.0    # seconds
 ZONES = [
    ((0.53,0.81,0.98),(0.78,0.93,1.00),(0.20,0.55,0.10),(0.78,0.93,1.00),"Meadow",         False, False),
    ((0.10,0.10,0.24),(0.20,0.20,0.40),(0.10,0.28,0.10),(0.15,0.15,0.30),"Night Forest",   False, False),
-   ((0.35,0.47,0.60),(0.55,0.65,0.75),(0.15,0.40,0.10),(0.45,0.55,0.65),"Rainy Valley",   True,  False),
    ((0.78,0.88,0.95),(0.90,0.95,1.00),(0.85,0.92,0.98),(0.85,0.90,0.95),"Snowfield",      False, True ),
    ((0.30,0.10,0.35),(0.55,0.25,0.60),(0.18,0.10,0.20),(0.40,0.20,0.45),"Twilight Hills", False, False),
    ((0.05,0.05,0.15),(0.10,0.05,0.20),(0.05,0.18,0.05),(0.05,0.05,0.12),"The Void",       False, False),
@@ -79,7 +78,7 @@ SINKHOLE_MIN_DISTANCE = 40.0
 
 # ─────────────────────────── WEATHER MODE / TRANSITIONS ─────────
 # Modes cycle automatically based on distance every 500 metres
-weather_modes = ["day", "night", "rain", "sunset"]
+weather_modes = ["day", "night", "sunset"]
 weather_mode = "day"            # current logical mode name
 weather_target_mode = "day"     # mode we're transitioning to
 weather_transition = 1.0         # 0.0..1.0 transition progress
@@ -186,18 +185,11 @@ def draw_screen_rect(x, y, w, h, r, g, b, a=1.0):
    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
    gluOrtho2D(0, WIN_W, 0, WIN_H)
    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
-   # Use blending so overlays can be translucent instead of fully opaque
-   blend_was = glIsEnabled(GL_BLEND)
-   if not blend_was:
-       glEnable(GL_BLEND)
-   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-   glColor4f(r, g, b, a)
+   glColor3f(r, g, b)
    glBegin(GL_QUADS)
    glVertex3f(x,   y,   0); glVertex3f(x+w, y,   0)
    glVertex3f(x+w, y+h, 0); glVertex3f(x,   y+h, 0)
    glEnd()
-   if not blend_was:
-       glDisable(GL_BLEND)
    glPopMatrix()
    glMatrixMode(GL_PROJECTION); glPopMatrix()
    glMatrixMode(GL_MODELVIEW)
@@ -857,7 +849,7 @@ def draw_hud():
 
    elif game_state == "win":
        cx = WIN_W//2 - 180
-       draw_text(cx+20, WIN_H//2+40, "YOU WIN!", 0.4, 1.0, 0.4)
+       draw_text(cx+20, WIN_H//2+40, "Game Over, You Win!!", 0.4, 1.0, 0.4)
        draw_text(cx-10, WIN_H//2+10, f"Final Score: {score}", 1.0, 0.9, 0.4)
        draw_text(cx, WIN_H//2-20, "Press ESC to exit", 0.7, 0.7, 0.7)
 
